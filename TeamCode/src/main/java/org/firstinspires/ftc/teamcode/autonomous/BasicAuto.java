@@ -1,12 +1,17 @@
+```java
 package org.firstinspires.ftc.teamcode.autonomous;
 
+import com.qualcomm.hardware.limelightvision.LLResult;
+import com.qualcomm.hardware.limelightvision.LLResultTypes;
+import com.qualcomm.hardware.limelightvision.Limelight3A;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
-
 import org.firstinspires.ftc.teamcode.Utilities.RobotHardware;
+
+import java.util.List;
 
 @Autonomous(name = "BasicAuto", group = "OpMode")
 public class BasicAuto extends OpMode {
@@ -18,19 +23,54 @@ public class BasicAuto extends OpMode {
     private RobotHardware robot = new RobotHardware();
 
     // =========================================================
+    // LIMELIGHT
+    // =========================================================
+
+    private Limelight3A limelight;
+
+    // AprilTag we want to track
+    private static final int TARGET_TAG_ID = 36;
+
+    // Your AprilTag pipeline
+    private static final int LIMELIGHT_PIPELINE = 8;
+
+    // =========================================================
+    // LIMELIGHT ALIGNMENT SETTINGS
+    // =========================================================
+
+    // How close the tag needs to be to the center of the camera
+    private static final double TX_TOLERANCE = 1.5;
+
+    // Maximum power used for Limelight correction
+    private static final double MAX_ALIGNMENT_POWER = 0.25;
+
+    // Minimum correction power
+    private static final double MIN_ALIGNMENT_POWER = 0.08;
+
+    // =========================================================
     // AUTONOMOUS STATES
     // =========================================================
 
     private enum AutoState {
+
         DRIVE_FORWARD_1,
+
         WAIT_1,
+
         TURN_LEFT_1,
+
         DRIVE_BACKWARD,
+
         SHOOT,
+
         WAIT_AFTER_SHOOT,
+
         TURN_LEFT_2,
+
         WAIT_2,
+
         INTAKE_DRIVE,
+
         STOP
     }
 
@@ -47,18 +87,43 @@ public class BasicAuto extends OpMode {
     private double targetHeading;
 
     // =========================================================
+    // LIMELIGHT VARIABLES
+    // =========================================================
+
+    private boolean targetVisible = false;
+
+    private double tagTx = 0.0;
+    private double tagTy = 0.0;
+
+    // =========================================================
     // INIT
     // =========================================================
 
     @Override
     public void init() {
 
+        // Initialize robot hardware
         robot.init(hardwareMap);
+
+        // Initialize Limelight
+        limelight = hardwareMap.get(
+                Limelight3A.class,
+                "Limelight"
+        );
+
+        // Select AprilTag pipeline
+        limelight.pipelineSwitch(LIMELIGHT_PIPELINE);
+
+        // Start Limelight
+        limelight.start();
 
         robot.logHardwareStatus(telemetry);
 
         telemetry.addLine("");
         telemetry.addLine("Pinpoint initialized.");
+        telemetry.addLine("Limelight initialized.");
+        telemetry.addData("AprilTag Target", TARGET_TAG_ID);
+        telemetry.addData("Limelight Pipeline", LIMELIGHT_PIPELINE);
         telemetry.addLine("Ready to start.");
         telemetry.update();
     }
@@ -87,7 +152,15 @@ public class BasicAuto extends OpMode {
     @Override
     public void loop() {
 
+        // Update odometry
         robot.updateOdo();
+
+        // Update Limelight
+        updateLimelight();
+
+        // =====================================================
+        // AUTONOMOUS STATE MACHINE
+        // =====================================================
 
         switch (currentState) {
 
@@ -146,7 +219,9 @@ public class BasicAuto extends OpMode {
             robot.stopDrive();
 
             currentState = AutoState.WAIT_1;
-            stateStartTime = System.currentTimeMillis();
+
+            stateStartTime =
+                    System.currentTimeMillis();
         }
     }
 
@@ -163,7 +238,9 @@ public class BasicAuto extends OpMode {
             prepareTurnLeft(90);
 
             currentState = AutoState.TURN_LEFT_1;
-            stateStartTime = System.currentTimeMillis();
+
+            stateStartTime =
+                    System.currentTimeMillis();
         }
     }
 
@@ -180,7 +257,9 @@ public class BasicAuto extends OpMode {
             prepareDriveBackward(500);
 
             currentState = AutoState.DRIVE_BACKWARD;
-            stateStartTime = System.currentTimeMillis();
+
+            stateStartTime =
+                    System.currentTimeMillis();
         }
     }
 
@@ -190,31 +269,57 @@ public class BasicAuto extends OpMode {
 
     private void DRIVE_BACKWARD() {
 
+        /*
+         * Continue using odometry to get to the shooting area.
+         *
+         * Once the target position is reached, the robot
+         * transitions into the SHOOT state.
+         */
+
         if (driveToPosition(0.2)) {
 
             robot.stopDrive();
 
-            shootMotors();
-
             currentState = AutoState.SHOOT;
-            stateStartTime = System.currentTimeMillis();
+
+            stateStartTime =
+                    System.currentTimeMillis();
         }
     }
 
     // =========================================================
-    // SHOOT FOR 6 SECONDS
+    // SHOOT
     // =========================================================
 
     private void SHOOT() {
 
+        /*
+         * Keep the shooter running for 6 seconds.
+         */
         shootMotors();
 
+        /*
+         * If AprilTag 36 is visible, use the Limelight
+         * to correct the robot's horizontal alignment.
+         */
+        if (targetVisible) {
+
+            alignToAprilTag();
+        }
+
+        /*
+         * Six-second shooting period.
+         */
         if (elapsedTime(6000)) {
 
             stopShootMotors();
 
+            robot.stopDrive();
+
             currentState = AutoState.WAIT_AFTER_SHOOT;
-            stateStartTime = System.currentTimeMillis();
+
+            stateStartTime =
+                    System.currentTimeMillis();
         }
     }
 
@@ -231,7 +336,9 @@ public class BasicAuto extends OpMode {
             prepareTurnLeft(90);
 
             currentState = AutoState.TURN_LEFT_2;
-            stateStartTime = System.currentTimeMillis();
+
+            stateStartTime =
+                    System.currentTimeMillis();
         }
     }
 
@@ -246,7 +353,9 @@ public class BasicAuto extends OpMode {
             robot.stopDrive();
 
             currentState = AutoState.WAIT_2;
-            stateStartTime = System.currentTimeMillis();
+
+            stateStartTime =
+                    System.currentTimeMillis();
         }
     }
 
@@ -265,7 +374,9 @@ public class BasicAuto extends OpMode {
             startIntake();
 
             currentState = AutoState.INTAKE_DRIVE;
-            stateStartTime = System.currentTimeMillis();
+
+            stateStartTime =
+                    System.currentTimeMillis();
         }
     }
 
@@ -280,10 +391,13 @@ public class BasicAuto extends OpMode {
         if (driveToPosition(0.5)) {
 
             stopIntake();
+
             robot.stopDrive();
 
             currentState = AutoState.STOP;
-            stateStartTime = System.currentTimeMillis();
+
+            stateStartTime =
+                    System.currentTimeMillis();
         }
     }
 
@@ -295,8 +409,148 @@ public class BasicAuto extends OpMode {
 
         robot.stopAllMotors();
 
+        if (limelight != null) {
+            limelight.stop();
+        }
+
         telemetry.addLine("AUTONOMOUS COMPLETE");
         telemetry.update();
+    }
+
+    // =========================================================
+    // LIMELIGHT UPDATE
+    // =========================================================
+
+    private void updateLimelight() {
+
+        targetVisible = false;
+
+        LLResult result =
+                limelight.getLatestResult();
+
+        if (result == null) {
+            return;
+        }
+
+        if (!result.isValid()) {
+            return;
+        }
+
+        List<LLResultTypes.FiducialResult> fiducials =
+                result.getFiducialResults();
+
+        for (LLResultTypes.FiducialResult fiducial : fiducials) {
+
+            int id =
+                    fiducial.getFiducialId();
+
+            /*
+             * Only use AprilTag ID 36.
+             */
+            if (id == TARGET_TAG_ID) {
+
+                targetVisible = true;
+
+                tagTx =
+                        fiducial.getTargetXDegrees();
+
+                tagTy =
+                        fiducial.getTargetYDegrees();
+
+                break;
+            }
+        }
+    }
+
+    // =========================================================
+    // APRILTAG ALIGNMENT
+    // =========================================================
+
+    private void alignToAprilTag() {
+
+        /*
+         * If the tag is already centered,
+         * don't move the robot.
+         */
+        if (Math.abs(tagTx) <= TX_TOLERANCE) {
+
+            robot.stopDrive();
+
+            return;
+        }
+
+        /*
+         * Convert TX into a proportional correction.
+         *
+         * Positive TX:
+         * Tag is to the right.
+         *
+         * Negative TX:
+         * Tag is to the left.
+         */
+
+        double correction =
+                tagTx * 0.025;
+
+        /*
+         * Limit maximum correction.
+         */
+
+        correction =
+                Math.max(
+                        -MAX_ALIGNMENT_POWER,
+                        Math.min(
+                                MAX_ALIGNMENT_POWER,
+                                correction
+                        )
+                );
+
+        /*
+         * Make sure very small corrections
+         * still move the robot.
+         */
+
+        if (Math.abs(correction)
+                < MIN_ALIGNMENT_POWER) {
+
+            correction =
+                    Math.copySign(
+                            MIN_ALIGNMENT_POWER,
+                            correction
+                    );
+        }
+
+        /*
+         * Strafe toward the AprilTag.
+         *
+         * Because your left motors are reversed
+         * in RobotHardware, these powers are
+         * intentionally written for your existing
+         * motor configuration.
+         */
+
+        if (tagTx > 0) {
+
+            // Tag is right -> strafe right
+
+            robot.setDrivePower(
+                    correction,
+                    -correction,
+                    -correction,
+                    correction
+            );
+
+        } else {
+
+            // Tag is left -> strafe left
+
+            robot.setDrivePower(
+                    -correction,
+                    correction,
+                    correction,
+                    -correction
+            );
+        }
     }
 
     // =========================================================
@@ -308,21 +562,29 @@ public class BasicAuto extends OpMode {
         robot.updateOdo();
 
         double startX =
-                robot.getOdoPositionX(DistanceUnit.MM);
+                robot.getOdoPositionX(
+                        DistanceUnit.MM
+                );
 
         double startY =
-                robot.getOdoPositionY(DistanceUnit.MM);
+                robot.getOdoPositionY(
+                        DistanceUnit.MM
+                );
 
         double heading =
-                robot.getOdoHeading(AngleUnit.RADIANS);
+                robot.getOdoHeading(
+                        AngleUnit.RADIANS
+                );
 
         targetX =
-                startX +
-                distanceMm * Math.cos(heading);
+                startX
+                        + distanceMm
+                        * Math.cos(heading);
 
         targetY =
-                startY +
-                distanceMm * Math.sin(heading);
+                startY
+                        + distanceMm
+                        * Math.sin(heading);
     }
 
     // =========================================================
@@ -334,21 +596,29 @@ public class BasicAuto extends OpMode {
         robot.updateOdo();
 
         double startX =
-                robot.getOdoPositionX(DistanceUnit.MM);
+                robot.getOdoPositionX(
+                        DistanceUnit.MM
+                );
 
         double startY =
-                robot.getOdoPositionY(DistanceUnit.MM);
+                robot.getOdoPositionY(
+                        DistanceUnit.MM
+                );
 
         double heading =
-                robot.getOdoHeading(AngleUnit.RADIANS);
+                robot.getOdoHeading(
+                        AngleUnit.RADIANS
+                );
 
         targetX =
-                startX -
-                distanceMm * Math.cos(heading);
+                startX
+                        - distanceMm
+                        * Math.cos(heading);
 
         targetY =
-                startY -
-                distanceMm * Math.sin(heading);
+                startY
+                        - distanceMm
+                        * Math.sin(heading);
     }
 
     // =========================================================
@@ -358,10 +628,14 @@ public class BasicAuto extends OpMode {
     private boolean driveToPosition(double power) {
 
         double currentX =
-                robot.getOdoPositionX(DistanceUnit.MM);
+                robot.getOdoPositionX(
+                        DistanceUnit.MM
+                );
 
         double currentY =
-                robot.getOdoPositionY(DistanceUnit.MM);
+                robot.getOdoPositionY(
+                        DistanceUnit.MM
+                );
 
         double remainingDistance =
                 Math.hypot(
@@ -375,6 +649,10 @@ public class BasicAuto extends OpMode {
                 remainingDistance
         );
 
+        /*
+         * Position reached.
+         */
+
         if (remainingDistance <= 10) {
 
             robot.stopDrive();
@@ -382,15 +660,25 @@ public class BasicAuto extends OpMode {
             return true;
         }
 
-        // Safety timeout
-        if (System.currentTimeMillis() - stateStartTime > 10000) {
+        /*
+         * Safety timeout.
+         */
+
+        if (System.currentTimeMillis()
+                - stateStartTime > 10000) {
 
             robot.stopDrive();
 
-            telemetry.addLine("DRIVE TIMEOUT");
+            telemetry.addLine(
+                    "DRIVE TIMEOUT"
+            );
 
             return true;
         }
+
+        /*
+         * Forward movement.
+         */
 
         robot.setDrivePower(
                 power,
@@ -411,7 +699,9 @@ public class BasicAuto extends OpMode {
         robot.updateOdo();
 
         double startHeading =
-                robot.getOdoHeading(AngleUnit.DEGREES);
+                robot.getOdoHeading(
+                        AngleUnit.DEGREES
+                );
 
         targetHeading =
                 normalizeDegrees(
@@ -426,7 +716,9 @@ public class BasicAuto extends OpMode {
     private boolean turnToHeading(double power) {
 
         double currentHeading =
-                robot.getOdoHeading(AngleUnit.DEGREES);
+                robot.getOdoHeading(
+                        AngleUnit.DEGREES
+                );
 
         double error =
                 angleDifference(
@@ -452,6 +744,10 @@ public class BasicAuto extends OpMode {
                 error
         );
 
+        /*
+         * Heading reached.
+         */
+
         if (Math.abs(error) <= 2) {
 
             robot.stopDrive();
@@ -459,17 +755,26 @@ public class BasicAuto extends OpMode {
             return true;
         }
 
-        // Safety timeout
-        if (System.currentTimeMillis() - stateStartTime > 5000) {
+        /*
+         * Safety timeout.
+         */
+
+        if (System.currentTimeMillis()
+                - stateStartTime > 5000) {
 
             robot.stopDrive();
 
-            telemetry.addLine("TURN TIMEOUT");
+            telemetry.addLine(
+                    "TURN TIMEOUT"
+            );
 
             return true;
         }
 
-        // Turn left
+        /*
+         * Turn left.
+         */
+
         if (error > 0) {
 
             robot.setDrivePower(
@@ -481,7 +786,10 @@ public class BasicAuto extends OpMode {
 
         } else {
 
-            // Turn right
+            /*
+             * Turn right.
+             */
+
             robot.setDrivePower(
                     power,
                     -power,
@@ -527,7 +835,8 @@ public class BasicAuto extends OpMode {
 
     private boolean elapsedTime(long milliseconds) {
 
-        return System.currentTimeMillis() - stateStartTime
+        return System.currentTimeMillis()
+                - stateStartTime
                 >= milliseconds;
     }
 
@@ -566,6 +875,31 @@ public class BasicAuto extends OpMode {
                 )
         );
 
+        telemetry.addData(
+                "AprilTag Target",
+                TARGET_TAG_ID
+        );
+
+        telemetry.addData(
+                "AprilTag Visible",
+                targetVisible
+        );
+
+        if (targetVisible) {
+
+            telemetry.addData(
+                    "Tag TX",
+                    "%.2f°",
+                    tagTx
+            );
+
+            telemetry.addData(
+                    "Tag TY",
+                    "%.2f°",
+                    tagTy
+            );
+        }
+
         telemetry.update();
     }
 
@@ -578,13 +912,16 @@ public class BasicAuto extends OpMode {
             double current
     ) {
 
-        double difference = target - current;
+        double difference =
+                target - current;
 
         while (difference > 180) {
+
             difference -= 360;
         }
 
         while (difference < -180) {
+
             difference += 360;
         }
 
@@ -600,10 +937,12 @@ public class BasicAuto extends OpMode {
     ) {
 
         while (angle >= 360) {
+
             angle -= 360;
         }
 
         while (angle < 0) {
+
             angle += 360;
         }
 
