@@ -44,7 +44,6 @@ public class BasicAuto extends OpMode {
 
     private double targetX;
     private double targetY;
-
     private double targetHeading;
 
     // =========================================================
@@ -54,10 +53,8 @@ public class BasicAuto extends OpMode {
     @Override
     public void init() {
 
-        // Initialize robot hardware
         robot.init(hardwareMap);
 
-        // Show hardware status
         robot.logHardwareStatus(telemetry);
 
         telemetry.addLine("");
@@ -94,182 +91,212 @@ public class BasicAuto extends OpMode {
 
         switch (currentState) {
 
-            // =====================================================
-            // DRIVE FORWARD 500mm
-            // =====================================================
-
             case DRIVE_FORWARD_1:
-
-                if (driveToPosition(0.5)) {
-
-                    robot.stopDrive();
-
-                    currentState = AutoState.WAIT_1;
-                    stateStartTime = System.currentTimeMillis();
-                }
-
+                DRIVE_FORWARD_1();
                 break;
-
-            // =====================================================
-            // WAIT 1 SECOND
-            // =====================================================
 
             case WAIT_1:
-
-                robot.stopDrive();
-
-                if (elapsedTime(1000)) {
-
-                    prepareTurnLeft(90);
-
-                    currentState = AutoState.TURN_LEFT_1;
-                    stateStartTime = System.currentTimeMillis();
-                }
-
+                WAIT_1();
                 break;
-
-            // =====================================================
-            // TURN LEFT 90°
-            // =====================================================
 
             case TURN_LEFT_1:
-
-                if (turnToHeading(0.2)) {
-
-                    robot.stopDrive();
-
-                    prepareDriveBackward(500);
-
-                    currentState = AutoState.DRIVE_BACKWARD;
-                    stateStartTime = System.currentTimeMillis();
-                }
-
+                TURN_LEFT_1();
                 break;
-
-            // =====================================================
-            // DRIVE BACKWARD 500mm
-            // =====================================================
 
             case DRIVE_BACKWARD:
-
-                if (driveToPosition(0.2)) {
-
-                    robot.stopDrive();
-
-                    shootMotors();
-
-                    currentState = AutoState.SHOOT;
-                    stateStartTime = System.currentTimeMillis();
-                }
-
+                DRIVE_BACKWARD();
                 break;
-
-            // =====================================================
-            // SHOOT FOR 6 SECONDS
-            // =====================================================
 
             case SHOOT:
-
-                shootMotors();
-
-                if (elapsedTime(6000)) {
-
-                    stopShootMotors();
-
-                    currentState = AutoState.WAIT_AFTER_SHOOT;
-                    stateStartTime = System.currentTimeMillis();
-                }
-
+                SHOOT();
                 break;
-
-            // =====================================================
-            // WAIT 1 SECOND AFTER SHOOTING
-            // =====================================================
 
             case WAIT_AFTER_SHOOT:
-
-                robot.stopDrive();
-
-                if (elapsedTime(1000)) {
-
-                    prepareTurnLeft(90);
-
-                    currentState = AutoState.TURN_LEFT_2;
-                    stateStartTime = System.currentTimeMillis();
-                }
-
+                WAIT_AFTER_SHOOT();
                 break;
-
-            // =====================================================
-            // TURN LEFT ANOTHER 90°
-            // =====================================================
 
             case TURN_LEFT_2:
-
-                if (turnToHeading(0.2)) {
-
-                    robot.stopDrive();
-
-                    currentState = AutoState.WAIT_2;
-                    stateStartTime = System.currentTimeMillis();
-                }
-
+                TURN_LEFT_2();
                 break;
-
-            // =====================================================
-            // WAIT 1 SECOND
-            // =====================================================
 
             case WAIT_2:
-
-                robot.stopDrive();
-
-                if (elapsedTime(1000)) {
-
-                    prepareDriveForward(250);
-
-                    startIntake();
-
-                    currentState = AutoState.INTAKE_DRIVE;
-                    stateStartTime = System.currentTimeMillis();
-                }
-
+                WAIT_2();
                 break;
-
-            // =====================================================
-            // INTAKE + DRIVE FORWARD 250mm
-            // =====================================================
 
             case INTAKE_DRIVE:
-
-                startIntake();
-
-                if (driveToPosition(0.5)) {
-
-                    stopIntake();
-                    robot.stopDrive();
-
-                    currentState = AutoState.STOP;
-                    stateStartTime = System.currentTimeMillis();
-                }
-
+                INTAKE_DRIVE();
                 break;
 
-            // =====================================================
-            // STOP
-            // =====================================================
-
             case STOP:
-
-                robot.stopAllMotors();
-
-                telemetry.addLine("AUTONOMOUS COMPLETE");
-                telemetry.update();
-
+                STOP();
                 break;
         }
 
         updateTelemetry();
+    }
+
+    // =========================================================
+    // DRIVE FORWARD 1
+    // =========================================================
+
+    private void DRIVE_FORWARD_1() {
+
+        if (driveToPosition(0.5)) {
+
+            robot.stopDrive();
+
+            currentState = AutoState.WAIT_1;
+            stateStartTime = System.currentTimeMillis();
+        }
+    }
+
+    // =========================================================
+    // WAIT 1
+    // =========================================================
+
+    private void WAIT_1() {
+
+        robot.stopDrive();
+
+        if (elapsedTime(1000)) {
+
+            prepareTurnLeft(90);
+
+            currentState = AutoState.TURN_LEFT_1;
+            stateStartTime = System.currentTimeMillis();
+        }
+    }
+
+    // =========================================================
+    // TURN LEFT 1
+    // =========================================================
+
+    private void TURN_LEFT_1() {
+
+        if (turnToHeading(0.2)) {
+
+            robot.stopDrive();
+
+            prepareDriveBackward(500);
+
+            currentState = AutoState.DRIVE_BACKWARD;
+            stateStartTime = System.currentTimeMillis();
+        }
+    }
+
+    // =========================================================
+    // DRIVE BACKWARD
+    // =========================================================
+
+    private void DRIVE_BACKWARD() {
+
+        if (driveToPosition(0.2)) {
+
+            robot.stopDrive();
+
+            shootMotors();
+
+            currentState = AutoState.SHOOT;
+            stateStartTime = System.currentTimeMillis();
+        }
+    }
+
+    // =========================================================
+    // SHOOT FOR 6 SECONDS
+    // =========================================================
+
+    private void SHOOT() {
+
+        shootMotors();
+
+        if (elapsedTime(6000)) {
+
+            stopShootMotors();
+
+            currentState = AutoState.WAIT_AFTER_SHOOT;
+            stateStartTime = System.currentTimeMillis();
+        }
+    }
+
+    // =========================================================
+    // WAIT AFTER SHOOT
+    // =========================================================
+
+    private void WAIT_AFTER_SHOOT() {
+
+        robot.stopDrive();
+
+        if (elapsedTime(1000)) {
+
+            prepareTurnLeft(90);
+
+            currentState = AutoState.TURN_LEFT_2;
+            stateStartTime = System.currentTimeMillis();
+        }
+    }
+
+    // =========================================================
+    // TURN LEFT 2
+    // =========================================================
+
+    private void TURN_LEFT_2() {
+
+        if (turnToHeading(0.2)) {
+
+            robot.stopDrive();
+
+            currentState = AutoState.WAIT_2;
+            stateStartTime = System.currentTimeMillis();
+        }
+    }
+
+    // =========================================================
+    // WAIT 2
+    // =========================================================
+
+    private void WAIT_2() {
+
+        robot.stopDrive();
+
+        if (elapsedTime(1000)) {
+
+            prepareDriveForward(250);
+
+            startIntake();
+
+            currentState = AutoState.INTAKE_DRIVE;
+            stateStartTime = System.currentTimeMillis();
+        }
+    }
+
+    // =========================================================
+    // INTAKE DRIVE
+    // =========================================================
+
+    private void INTAKE_DRIVE() {
+
+        startIntake();
+
+        if (driveToPosition(0.5)) {
+
+            stopIntake();
+            robot.stopDrive();
+
+            currentState = AutoState.STOP;
+            stateStartTime = System.currentTimeMillis();
+        }
+    }
+
+    // =========================================================
+    // STOP
+    // =========================================================
+
+    private void STOP() {
+
+        robot.stopAllMotors();
+
+        telemetry.addLine("AUTONOMOUS COMPLETE");
+        telemetry.update();
     }
 
     // =========================================================
@@ -365,7 +392,6 @@ public class BasicAuto extends OpMode {
             return true;
         }
 
-        // Drive forward
         robot.setDrivePower(
                 power,
                 power,
@@ -385,9 +411,7 @@ public class BasicAuto extends OpMode {
         robot.updateOdo();
 
         double startHeading =
-                robot.getOdoHeading(
-                        AngleUnit.DEGREES
-                );
+                robot.getOdoHeading(AngleUnit.DEGREES);
 
         targetHeading =
                 normalizeDegrees(
@@ -402,9 +426,7 @@ public class BasicAuto extends OpMode {
     private boolean turnToHeading(double power) {
 
         double currentHeading =
-                robot.getOdoHeading(
-                        AngleUnit.DEGREES
-                );
+                robot.getOdoHeading(AngleUnit.DEGREES);
 
         double error =
                 angleDifference(
@@ -430,7 +452,6 @@ public class BasicAuto extends OpMode {
                 error
         );
 
-        // Target reached
         if (Math.abs(error) <= 2) {
 
             robot.stopDrive();
@@ -460,7 +481,7 @@ public class BasicAuto extends OpMode {
 
         } else {
 
-            // Turn right if error is negative
+            // Turn right
             robot.setDrivePower(
                     power,
                     -power,
