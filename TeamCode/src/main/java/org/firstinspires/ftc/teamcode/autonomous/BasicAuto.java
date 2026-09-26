@@ -1,15 +1,15 @@
 package org.firstinspires.ftc.teamcode.autonomous;
 
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
-import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
+import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 
 import org.firstinspires.ftc.teamcode.Utilities.RobotHardware;
 
-@Autonomous(name = "BasicAuto", group = "Linear Opmode")
-public class BasicAuto extends LinearOpMode {
+@Autonomous(name = "BasicAuto", group = "OpMode")
+public class BasicAuto extends OpMode {
 
     // =========================================================
     // ROBOT HARDWARE
@@ -18,13 +18,43 @@ public class BasicAuto extends LinearOpMode {
     private RobotHardware robot = new RobotHardware();
 
     // =========================================================
-    // RUN OPMODE
+    // AUTONOMOUS STATES
+    // =========================================================
+
+    private enum AutoState {
+        DRIVE_FORWARD_1,
+        WAIT_1,
+        TURN_LEFT_1,
+        DRIVE_BACKWARD,
+        SHOOT,
+        WAIT_AFTER_SHOOT,
+        TURN_LEFT_2,
+        WAIT_2,
+        INTAKE_DRIVE,
+        STOP
+    }
+
+    private AutoState currentState = AutoState.DRIVE_FORWARD_1;
+
+    // =========================================================
+    // STATE VARIABLES
+    // =========================================================
+
+    private long stateStartTime;
+
+    private double targetX;
+    private double targetY;
+
+    private double targetHeading;
+
+    // =========================================================
+    // INIT
     // =========================================================
 
     @Override
-    public void runOpMode() {
+    public void init() {
 
-        // Initialize ALL robot hardware
+        // Initialize robot hardware
         robot.init(hardwareMap);
 
         // Show hardware status
@@ -32,73 +62,221 @@ public class BasicAuto extends LinearOpMode {
 
         telemetry.addLine("");
         telemetry.addLine("Pinpoint initialized.");
-        telemetry.addLine("Waiting for start...");
+        telemetry.addLine("Ready to start.");
         telemetry.update();
-
-        waitForStart();
-
-        if (!opModeIsActive()) {
-            return;
-        }
-
-        // =====================================================
-        // AUTONOMOUS
-        // =====================================================
-
-        driveForward(
-                500,
-                0.5
-        );
-
-        sleep(1000);
-
-        turnLeft(
-                90,
-                0.2
-        );
-
-        driveBackward(
-                500,
-                0.2
-        );
-
-        // Shoot
-        shootMotors();
-
-        sleep(2000);
-
-        stopShootMotors();
-
-        sleep(1000);
-
-        turnLeft(
-                90,
-                0.2
-        );
-
-        sleep(1000);
-
-        // Intake
-        startIntake();
-
-        driveForward(
-                250,
-                0.5
-        );
-
-        stopIntake();
-
-        robot.stopAllMotors();
     }
 
     // =========================================================
-    // DRIVE FORWARD
+    // START
     // =========================================================
 
-    private void driveForward(
-            double distanceMm,
-            double power
-    ) {
+    @Override
+    public void start() {
+
+        currentState = AutoState.DRIVE_FORWARD_1;
+
+        stateStartTime = System.currentTimeMillis();
+
+        prepareDriveForward(500);
+
+        telemetry.addLine("Autonomous Started");
+        telemetry.update();
+    }
+
+    // =========================================================
+    // LOOP
+    // =========================================================
+
+    @Override
+    public void loop() {
+
+        robot.updateOdo();
+
+        switch (currentState) {
+
+            // =====================================================
+            // DRIVE FORWARD 500mm
+            // =====================================================
+
+            case DRIVE_FORWARD_1:
+
+                if (driveToPosition(0.5)) {
+
+                    robot.stopDrive();
+
+                    currentState = AutoState.WAIT_1;
+                    stateStartTime = System.currentTimeMillis();
+                }
+
+                break;
+
+            // =====================================================
+            // WAIT 1 SECOND
+            // =====================================================
+
+            case WAIT_1:
+
+                robot.stopDrive();
+
+                if (elapsedTime(1000)) {
+
+                    prepareTurnLeft(90);
+
+                    currentState = AutoState.TURN_LEFT_1;
+                    stateStartTime = System.currentTimeMillis();
+                }
+
+                break;
+
+            // =====================================================
+            // TURN LEFT 90°
+            // =====================================================
+
+            case TURN_LEFT_1:
+
+                if (turnToHeading(0.2)) {
+
+                    robot.stopDrive();
+
+                    prepareDriveBackward(500);
+
+                    currentState = AutoState.DRIVE_BACKWARD;
+                    stateStartTime = System.currentTimeMillis();
+                }
+
+                break;
+
+            // =====================================================
+            // DRIVE BACKWARD 500mm
+            // =====================================================
+
+            case DRIVE_BACKWARD:
+
+                if (driveToPosition(0.2)) {
+
+                    robot.stopDrive();
+
+                    shootMotors();
+
+                    currentState = AutoState.SHOOT;
+                    stateStartTime = System.currentTimeMillis();
+                }
+
+                break;
+
+            // =====================================================
+            // SHOOT FOR 6 SECONDS
+            // =====================================================
+
+            case SHOOT:
+
+                shootMotors();
+
+                if (elapsedTime(6000)) {
+
+                    stopShootMotors();
+
+                    currentState = AutoState.WAIT_AFTER_SHOOT;
+                    stateStartTime = System.currentTimeMillis();
+                }
+
+                break;
+
+            // =====================================================
+            // WAIT 1 SECOND AFTER SHOOTING
+            // =====================================================
+
+            case WAIT_AFTER_SHOOT:
+
+                robot.stopDrive();
+
+                if (elapsedTime(1000)) {
+
+                    prepareTurnLeft(90);
+
+                    currentState = AutoState.TURN_LEFT_2;
+                    stateStartTime = System.currentTimeMillis();
+                }
+
+                break;
+
+            // =====================================================
+            // TURN LEFT ANOTHER 90°
+            // =====================================================
+
+            case TURN_LEFT_2:
+
+                if (turnToHeading(0.2)) {
+
+                    robot.stopDrive();
+
+                    currentState = AutoState.WAIT_2;
+                    stateStartTime = System.currentTimeMillis();
+                }
+
+                break;
+
+            // =====================================================
+            // WAIT 1 SECOND
+            // =====================================================
+
+            case WAIT_2:
+
+                robot.stopDrive();
+
+                if (elapsedTime(1000)) {
+
+                    prepareDriveForward(250);
+
+                    startIntake();
+
+                    currentState = AutoState.INTAKE_DRIVE;
+                    stateStartTime = System.currentTimeMillis();
+                }
+
+                break;
+
+            // =====================================================
+            // INTAKE + DRIVE FORWARD 250mm
+            // =====================================================
+
+            case INTAKE_DRIVE:
+
+                startIntake();
+
+                if (driveToPosition(0.5)) {
+
+                    stopIntake();
+                    robot.stopDrive();
+
+                    currentState = AutoState.STOP;
+                    stateStartTime = System.currentTimeMillis();
+                }
+
+                break;
+
+            // =====================================================
+            // STOP
+            // =====================================================
+
+            case STOP:
+
+                robot.stopAllMotors();
+
+                telemetry.addLine("AUTONOMOUS COMPLETE");
+                telemetry.update();
+
+                break;
+        }
+
+        updateTelemetry();
+    }
+
+    // =========================================================
+    // PREPARE FORWARD MOVEMENT
+    // =========================================================
+
+    private void prepareDriveForward(double distanceMm) {
 
         robot.updateOdo();
 
@@ -108,17 +286,86 @@ public class BasicAuto extends LinearOpMode {
         double startY =
                 robot.getOdoPositionY(DistanceUnit.MM);
 
-        double startHeading =
+        double heading =
                 robot.getOdoHeading(AngleUnit.RADIANS);
 
-        double targetX =
+        targetX =
                 startX +
-                        distanceMm * Math.cos(startHeading);
+                distanceMm * Math.cos(heading);
 
-        double targetY =
+        targetY =
                 startY +
-                        distanceMm * Math.sin(startHeading);
+                distanceMm * Math.sin(heading);
+    }
 
+    // =========================================================
+    // PREPARE BACKWARD MOVEMENT
+    // =========================================================
+
+    private void prepareDriveBackward(double distanceMm) {
+
+        robot.updateOdo();
+
+        double startX =
+                robot.getOdoPositionX(DistanceUnit.MM);
+
+        double startY =
+                robot.getOdoPositionY(DistanceUnit.MM);
+
+        double heading =
+                robot.getOdoHeading(AngleUnit.RADIANS);
+
+        targetX =
+                startX -
+                distanceMm * Math.cos(heading);
+
+        targetY =
+                startY -
+                distanceMm * Math.sin(heading);
+    }
+
+    // =========================================================
+    // DRIVE TO TARGET
+    // =========================================================
+
+    private boolean driveToPosition(double power) {
+
+        double currentX =
+                robot.getOdoPositionX(DistanceUnit.MM);
+
+        double currentY =
+                robot.getOdoPositionY(DistanceUnit.MM);
+
+        double remainingDistance =
+                Math.hypot(
+                        targetX - currentX,
+                        targetY - currentY
+                );
+
+        telemetry.addData(
+                "Target Distance",
+                "%.1f mm",
+                remainingDistance
+        );
+
+        if (remainingDistance <= 10) {
+
+            robot.stopDrive();
+
+            return true;
+        }
+
+        // Safety timeout
+        if (System.currentTimeMillis() - stateStartTime > 10000) {
+
+            robot.stopDrive();
+
+            telemetry.addLine("DRIVE TIMEOUT");
+
+            return true;
+        }
+
+        // Drive forward
         robot.setDrivePower(
                 power,
                 power,
@@ -126,290 +373,103 @@ public class BasicAuto extends LinearOpMode {
                 power
         );
 
-        long startTime =
-                System.currentTimeMillis();
-
-        while (opModeIsActive()) {
-
-            robot.updateOdo();
-
-            double currentX =
-                    robot.getOdoPositionX(
-                            DistanceUnit.MM
-                    );
-
-            double currentY =
-                    robot.getOdoPositionY(
-                            DistanceUnit.MM
-                    );
-
-            double remainingDistance =
-                    Math.hypot(
-                            targetX - currentX,
-                            targetY - currentY
-                    );
-
-            updateTelemetry();
-
-            telemetry.addData(
-                    "Target Distance",
-                    "%.1f mm",
-                    distanceMm
-            );
-
-            telemetry.addData(
-                    "Remaining",
-                    "%.1f mm",
-                    remainingDistance
-            );
-
-            telemetry.update();
-
-            if (remainingDistance <= 10) {
-                break;
-            }
-
-            // Safety timeout
-            if (System.currentTimeMillis() - startTime > 10000) {
-                telemetry.addLine("DRIVE TIMEOUT");
-                telemetry.update();
-                break;
-            }
-        }
-
-        robot.stopDrive();
+        return false;
     }
 
     // =========================================================
-    // DRIVE BACKWARD
+    // PREPARE TURN LEFT
     // =========================================================
 
-    private void driveBackward(
-            double distanceMm,
-            double power
-    ) {
+    private void prepareTurnLeft(double degrees) {
 
         robot.updateOdo();
-
-        double startX =
-                robot.getOdoPositionX(DistanceUnit.MM);
-
-        double startY =
-                robot.getOdoPositionY(DistanceUnit.MM);
-
-        double startHeading =
-                robot.getOdoHeading(AngleUnit.RADIANS);
-
-        double targetX =
-                startX -
-                        distanceMm * Math.cos(startHeading);
-
-        double targetY =
-                startY -
-                        distanceMm * Math.sin(startHeading);
-
-        robot.setDrivePower(
-                -power,
-                -power,
-                -power,
-                -power
-        );
-
-        long startTime =
-                System.currentTimeMillis();
-
-        while (opModeIsActive()) {
-
-            robot.updateOdo();
-
-            double currentX =
-                    robot.getOdoPositionX(
-                            DistanceUnit.MM
-                    );
-
-            double currentY =
-                    robot.getOdoPositionY(
-                            DistanceUnit.MM
-                    );
-
-            double remainingDistance =
-                    Math.hypot(
-                            targetX - currentX,
-                            targetY - currentY
-                    );
-
-            updateTelemetry();
-
-            telemetry.addData(
-                    "Target Distance",
-                    "%.1f mm",
-                    distanceMm
-            );
-
-            telemetry.addData(
-                    "Remaining",
-                    "%.1f mm",
-                    remainingDistance
-            );
-
-            telemetry.update();
-
-            if (remainingDistance <= 10) {
-                break;
-            }
-
-            if (System.currentTimeMillis() - startTime > 10000) {
-                telemetry.addLine("DRIVE TIMEOUT");
-                telemetry.update();
-                break;
-            }
-        }
-
-        robot.stopDrive();
-    }
-
-    // =========================================================
-    // TURN LEFT
-    // =========================================================
-
-    private void turnLeft(
-            double degrees,
-            double power
-    ) {
 
         double startHeading =
                 robot.getOdoHeading(
                         AngleUnit.DEGREES
                 );
 
-        double targetHeading =
+        targetHeading =
                 normalizeDegrees(
                         startHeading + degrees
                 );
-
-        robot.setDrivePower(
-                -power,
-                power,
-                -power,
-                power
-        );
-
-        long startTime =
-                System.currentTimeMillis();
-
-        while (opModeIsActive()) {
-
-            double currentHeading =
-                    robot.getOdoHeading(
-                            AngleUnit.DEGREES
-                    );
-
-            double error =
-                    angleDifference(
-                            targetHeading,
-                            currentHeading
-                    );
-
-            updateTelemetry();
-
-            telemetry.addData(
-                    "Target Heading",
-                    "%.1f°",
-                    targetHeading
-            );
-
-            telemetry.addData(
-                    "Heading Error",
-                    "%.1f°",
-                    error
-            );
-
-            telemetry.update();
-
-            if (Math.abs(error) <= 2) {
-                break;
-            }
-
-            if (System.currentTimeMillis() - startTime > 5000) {
-                telemetry.addLine("TURN TIMEOUT");
-                telemetry.update();
-                break;
-            }
-        }
-
-        robot.stopDrive();
     }
 
     // =========================================================
-    // TURN RIGHT
+    // TURN TO TARGET HEADING
     // =========================================================
 
-    private void turnRight(
-            double degrees,
-            double power
-    ) {
+    private boolean turnToHeading(double power) {
 
-        double startHeading =
+        double currentHeading =
                 robot.getOdoHeading(
                         AngleUnit.DEGREES
                 );
 
-        double targetHeading =
-                normalizeDegrees(
-                        startHeading - degrees
+        double error =
+                angleDifference(
+                        targetHeading,
+                        currentHeading
                 );
 
-        robot.setDrivePower(
-                power,
-                -power,
-                power,
-                -power
+        telemetry.addData(
+                "Target Heading",
+                "%.1f°",
+                targetHeading
         );
 
-        long startTime =
-                System.currentTimeMillis();
+        telemetry.addData(
+                "Current Heading",
+                "%.1f°",
+                currentHeading
+        );
 
-        while (opModeIsActive()) {
+        telemetry.addData(
+                "Heading Error",
+                "%.1f°",
+                error
+        );
 
-            double currentHeading =
-                    robot.getOdoHeading(
-                            AngleUnit.DEGREES
-                    );
+        // Target reached
+        if (Math.abs(error) <= 2) {
 
-            double error =
-                    angleDifference(
-                            targetHeading,
-                            currentHeading
-                    );
+            robot.stopDrive();
 
-            updateTelemetry();
-
-            telemetry.addData(
-                    "Target Heading",
-                    "%.1f°",
-                    targetHeading
-            );
-
-            telemetry.addData(
-                    "Heading Error",
-                    "%.1f°",
-                    error
-            );
-
-            telemetry.update();
-
-            if (Math.abs(error) <= 2) {
-                break;
-            }
-
-            if (System.currentTimeMillis() - startTime > 5000) {
-                telemetry.addLine("TURN TIMEOUT");
-                telemetry.update();
-                break;
-            }
+            return true;
         }
 
-        robot.stopDrive();
+        // Safety timeout
+        if (System.currentTimeMillis() - stateStartTime > 5000) {
+
+            robot.stopDrive();
+
+            telemetry.addLine("TURN TIMEOUT");
+
+            return true;
+        }
+
+        // Turn left
+        if (error > 0) {
+
+            robot.setDrivePower(
+                    -power,
+                    power,
+                    -power,
+                    power
+            );
+
+        } else {
+
+            // Turn right if error is negative
+            robot.setDrivePower(
+                    power,
+                    -power,
+                    power,
+                    -power
+            );
+        }
+
+        return false;
     }
 
     // =========================================================
@@ -441,10 +501,25 @@ public class BasicAuto extends LinearOpMode {
     }
 
     // =========================================================
+    // TIMER
+    // =========================================================
+
+    private boolean elapsedTime(long milliseconds) {
+
+        return System.currentTimeMillis() - stateStartTime
+                >= milliseconds;
+    }
+
+    // =========================================================
     // TELEMETRY
     // =========================================================
 
     private void updateTelemetry() {
+
+        telemetry.addData(
+                "State",
+                currentState
+        );
 
         telemetry.addData(
                 "X",
@@ -469,6 +544,8 @@ public class BasicAuto extends LinearOpMode {
                         AngleUnit.DEGREES
                 )
         );
+
+        telemetry.update();
     }
 
     // =========================================================
