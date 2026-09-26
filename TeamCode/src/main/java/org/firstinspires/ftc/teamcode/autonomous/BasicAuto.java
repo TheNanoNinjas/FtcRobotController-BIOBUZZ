@@ -1,129 +1,235 @@
 package org.firstinspires.ftc.teamcode.autonomous;
 
 import com.qualcomm.hardware.limelightvision.LLResult;
-import com.qualcomm.hardware.limelightvision.LLResultTypes;
-import com.qualcomm.hardware.limelightvision.Limelight3A;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
+import com.qualcomm.robotcore.util.ElapsedTime;
 
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
+import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
 import org.firstinspires.ftc.teamcode.Utilities.RobotHardware;
 
-import java.util.List;
-
-@Autonomous(name = "BasicAuto", group = "OpMode")
+@Autonomous(
+        name = "BasicAuto",
+        group = "Competition"
+)
 public class BasicAuto extends OpMode {
 
     // =========================================================
-    // ROBOT HARDWARE
+    // ROBOT
     // =========================================================
 
     private RobotHardware robot = new RobotHardware();
 
     // =========================================================
-    // LIMELIGHT
+    // STAGES
     // =========================================================
 
-    private Limelight3A limelight;
-
-    // AprilTag we want to track
-    private static final int TARGET_TAG_ID = 36;
-
-    // Your AprilTag pipeline
-    private static final int LIMELIGHT_PIPELINE = 8;
-
-    // =========================================================
-    // LIMELIGHT ALIGNMENT SETTINGS
-    // =========================================================
-
-    // How close the tag needs to be to the center of the camera
-    private static final double TX_TOLERANCE = 1.5;
-
-    // Maximum power used for Limelight correction
-    private static final double MAX_ALIGNMENT_POWER = 0.25;
-
-    // Minimum correction power
-    private static final double MIN_ALIGNMENT_POWER = 0.08;
-
-    // =========================================================
-    // AUTONOMOUS STATES
-    // =========================================================
-
-    private enum AutoState {
+    private enum AutoStage {
 
         DRIVE_FORWARD_1,
-
-        WAIT_1,
-
         TURN_LEFT_1,
+        DRIVE_BACKWARD_1,
 
-        DRIVE_BACKWARD,
+        ALIGN_TO_HIVE,
 
         SHOOT,
 
-        WAIT_AFTER_SHOOT,
+        TURN_RIGHT_1,
 
-        TURN_LEFT_2,
+        START_INTAKE,
 
-        WAIT_2,
-
-        INTAKE_DRIVE,
+        DRIVE_BACKWARD_2,
 
         STOP
     }
 
-    private AutoState currentState = AutoState.DRIVE_FORWARD_1;
+    private AutoStage currentStage = AutoStage.DRIVE_FORWARD_1;
 
     // =========================================================
-    // STATE VARIABLES
+    // TIMERS
     // =========================================================
 
-    private long stateStartTime;
-
-    private double targetX;
-    private double targetY;
-    private double targetHeading;
+    private ElapsedTime stageTimer = new ElapsedTime();
 
     // =========================================================
-    // LIMELIGHT VARIABLES
+    // DISTANCES
     // =========================================================
 
-    private boolean targetVisible = false;
+    private static final double FORWARD_DISTANCE_1 = 60.0;
 
-    private double tagTx = 0.0;
-    private double tagTy = 0.0;
+    private static final double BACKWARD_DISTANCE_1 = 36.0;
+
+    private static final double BACKWARD_DISTANCE_2 = 60.0;
 
     // =========================================================
-    // INIT
+    // TURN ANGLES
+    // =========================================================
+
+    private static final double TURN_LEFT_ANGLE = 90.0;
+
+    private static final double TURN_RIGHT_ANGLE = 90.0;
+
+    // =========================================================
+    // SHOOTING
+    // =========================================================
+
+    private static final double SHOOT_TIME = 6.0;
+
+    private static final double SHOOTER_POWER = 1.0;
+
+    // =========================================================
+    // INTAKE
+    // =========================================================
+
+    private static final double INTAKE_POWER = 1.0;
+
+    // =========================================================
+    // DRIVE POWER
+    // =========================================================
+
+    private static final double MAX_DRIVE_POWER = 0.65;
+
+    private static final double MIN_DRIVE_POWER = 0.15;
+
+    // =========================================================
+    // TURN POWER
+    // =========================================================
+
+    private static final double MAX_TURN_POWER = 0.50;
+
+    private static final double MIN_TURN_POWER = 0.12;
+
+    // =========================================================
+    // ODOMETRY TOLERANCES
+    // =========================================================
+
+    private static final double DRIVE_TOLERANCE = 0.75;
+
+    private static final double TURN_TOLERANCE = 1.5;
+
+    // =========================================================
+    // LIMELIGHT
+    // =========================================================
+
+    /*
+     * Pipeline 8 is assumed to be your hive/AprilTag pipeline.
+     */
+    private static final int LIMELIGHT_PIPELINE = 8;
+
+    /*
+     * How close tx needs to be to consider the robot aligned.
+     */
+    private static final double LIMELIGHT_TX_TOLERANCE = 1.0;
+
+    /*
+     * Maximum rotation power while aligning.
+     */
+    private static final double LIMELIGHT_MAX_POWER = 0.25;
+
+    /*
+     * Proportional gain for Limelight alignment.
+     *
+     * If the robot turns the WRONG direction, change this
+     * from -0.015 to +0.015.
+     */
+    private static final double LIMELIGHT_KP = -0.015;
+
+    /*
+     * Don't let the robot wait forever for the Limelight.
+     */
+    private static final double LIMELIGHT_TIMEOUT = 3.0;
+
+    // =========================================================
+    // SHOOTER SERVO POSITIONS
+    // =========================================================
+
+    /*
+     * CHANGE THESE TO YOUR ACTUAL SERVO POSITIONS.
+     */
+    private static final double STAGE1_IDLE = 0.0;
+    private static final double STAGE1_FIRE = 1.0;
+
+    private static final double STAGE2_IDLE = 0.0;
+    private static final double STAGE2_FIRE = 1.0;
+
+    private static final double STAGE3_IDLE = 0.0;
+    private static final double STAGE3_FIRE = 1.0;
+
+    private static final double STAGE4_IDLE = 0.0;
+    private static final double STAGE4_FIRE = 1.0;
+
+    // =========================================================
+    // ODOMETRY STARTING VALUES
+    // =========================================================
+
+    private double startX;
+    private double startY;
+
+    private double turnTarget;
+
+    // =========================================================
+    // INITIALIZE
     // =========================================================
 
     @Override
     public void init() {
 
-        // Initialize robot hardware
         robot.init(hardwareMap);
 
-        // Initialize Limelight
-        limelight = hardwareMap.get(
-                Limelight3A.class,
-                "Limelight"
+        // Start Limelight.
+        robot.limelight.pipelineSwitch(LIMELIGHT_PIPELINE);
+        robot.limelight.start();
+
+        // Put shooter off.
+        robot.shooter.setPower(0);
+
+        // Put intake off.
+        robot.intakeMotor.setPower(0);
+
+        // Put servos into their idle positions.
+        setShooterServosIdle();
+
+        // Make sure odometry is updated.
+        robot.updateOdo();
+
+        telemetry.addLine("BasicAuto Initialized");
+        telemetry.addLine("Odometry: READY");
+        telemetry.addLine("Limelight: READY");
+        telemetry.addLine("Press PLAY to start.");
+        telemetry.update();
+    }
+
+    // =========================================================
+    // INIT LOOP
+    // =========================================================
+
+    @Override
+    public void init_loop() {
+
+        robot.updateOdo();
+
+        Pose2D pose = robot.getOdoPosition();
+
+        telemetry.addData(
+                "Odo X",
+                "%.2f in",
+                pose.getX(DistanceUnit.INCH)
         );
 
-        // Select AprilTag pipeline
-        limelight.pipelineSwitch(LIMELIGHT_PIPELINE);
+        telemetry.addData(
+                "Odo Y",
+                "%.2f in",
+                pose.getY(DistanceUnit.INCH)
+        );
 
-        // Start Limelight
-        limelight.start();
+        telemetry.addData(
+                "Odo Heading",
+                "%.2f°",
+                pose.getHeading(AngleUnit.DEGREES)
+        );
 
-        robot.logHardwareStatus(telemetry);
-
-        telemetry.addLine("");
-        telemetry.addLine("Pinpoint initialized.");
-        telemetry.addLine("Limelight initialized.");
-        telemetry.addData("AprilTag Target", TARGET_TAG_ID);
-        telemetry.addData("Limelight Pipeline", LIMELIGHT_PIPELINE);
-        telemetry.addLine("Ready to start.");
         telemetry.update();
     }
 
@@ -134,585 +240,585 @@ public class BasicAuto extends OpMode {
     @Override
     public void start() {
 
-        currentState = AutoState.DRIVE_FORWARD_1;
+        robot.resetOdo();
 
-        stateStartTime = System.currentTimeMillis();
+        robot.updateOdo();
 
-        prepareDriveForward(500);
+        Pose2D startingPose = robot.getOdoPosition();
 
-        telemetry.addLine("Autonomous Started");
-        telemetry.update();
+        startX = startingPose.getX(DistanceUnit.INCH);
+        startY = startingPose.getY(DistanceUnit.INCH);
+
+        stageTimer.reset();
+
+        currentStage = AutoStage.DRIVE_FORWARD_1;
     }
 
     // =========================================================
-    // LOOP
+    // MAIN LOOP
     // =========================================================
 
     @Override
     public void loop() {
 
-        // Update odometry
         robot.updateOdo();
 
-        // Update Limelight
-        updateLimelight();
+        switch (currentStage) {
 
-        // =====================================================
-        // AUTONOMOUS STATE MACHINE
-        // =====================================================
-
-        switch (currentState) {
+            // =================================================
+            // STAGE 1
+            // DRIVE FORWARD 60 INCHES
+            // =================================================
 
             case DRIVE_FORWARD_1:
+
                 DRIVE_FORWARD_1();
+
                 break;
 
-            case WAIT_1:
-                WAIT_1();
-                break;
+            // =================================================
+            // STAGE 2
+            // TURN LEFT 90 DEGREES
+            // =================================================
 
             case TURN_LEFT_1:
+
                 TURN_LEFT_1();
+
                 break;
 
-            case DRIVE_BACKWARD:
-                DRIVE_BACKWARD();
+            // =================================================
+            // STAGE 3
+            // MOVE BACKWARD 36 INCHES
+            // =================================================
+
+            case DRIVE_BACKWARD_1:
+
+                DRIVE_BACKWARD_1();
+
                 break;
+
+            // =================================================
+            // STAGE 4
+            // ALIGN WITH HIVE
+            // =================================================
+
+            case ALIGN_TO_HIVE:
+
+                ALIGN_TO_HIVE();
+
+                break;
+
+            // =================================================
+            // STAGE 5
+            // SHOOT
+            // =================================================
 
             case SHOOT:
+
                 SHOOT();
+
                 break;
 
-            case WAIT_AFTER_SHOOT:
-                WAIT_AFTER_SHOOT();
+            // =================================================
+            // STAGE 6
+            // TURN RIGHT
+            // =================================================
+
+            case TURN_RIGHT_1:
+
+                TURN_RIGHT_1();
+
                 break;
 
-            case TURN_LEFT_2:
-                TURN_LEFT_2();
+            // =================================================
+            // STAGE 7
+            // START INTAKE
+            // =================================================
+
+            case START_INTAKE:
+
+                START_INTAKE();
+
                 break;
 
-            case WAIT_2:
-                WAIT_2();
+            // =================================================
+            // STAGE 8
+            // BACK UP 60 INCHES
+            // =================================================
+
+            case DRIVE_BACKWARD_2:
+
+                DRIVE_BACKWARD_2();
+
                 break;
 
-            case INTAKE_DRIVE:
-                INTAKE_DRIVE();
-                break;
+            // =================================================
+            // FINISHED
+            // =================================================
 
             case STOP:
+
                 STOP();
+
                 break;
         }
 
-        updateTelemetry();
-    }
+        telemetry.addData(
+                "Stage",
+                currentStage
+        );
+
+        telemetry.addData(
+                "Odo X",
+                "%.2f",
+                robot.getOdoPositionX(DistanceUnit.INCH)
+        );
+
+        telemetry.addData(
+                "Odo Y",
+                "%.2f",
+                robot.getOdoPositionY(DistanceUnit.INCH)
+        );
+
+        telemetry.addData(
+                "Heading",
+                "%.2f",
+                robot.getOdoHeading(AngleUnit.DEGREES)
+        );
 
-    // =========================================================
-    // DRIVE FORWARD 1
-    // =========================================================
-
-    private void DRIVE_FORWARD_1() {
-
-        if (driveToPosition(0.5)) {
-
-            robot.stopDrive();
-
-            currentState = AutoState.WAIT_1;
-
-            stateStartTime =
-                    System.currentTimeMillis();
-        }
-    }
-
-    // =========================================================
-    // WAIT 1
-    // =========================================================
-
-    private void WAIT_1() {
-
-        robot.stopDrive();
-
-        if (elapsedTime(1000)) {
-
-            prepareTurnLeft(90);
-
-            currentState = AutoState.TURN_LEFT_1;
-
-            stateStartTime =
-                    System.currentTimeMillis();
-        }
-    }
-
-    // =========================================================
-    // TURN LEFT 1
-    // =========================================================
-
-    private void TURN_LEFT_1() {
-
-        if (turnToHeading(0.2)) {
-
-            robot.stopDrive();
-
-            prepareDriveBackward(500);
-
-            currentState = AutoState.DRIVE_BACKWARD;
-
-            stateStartTime =
-                    System.currentTimeMillis();
-        }
-    }
-
-    // =========================================================
-    // DRIVE BACKWARD
-    // =========================================================
-
-    private void DRIVE_BACKWARD() {
-
-        /*
-         * Continue using odometry to get to the shooting area.
-         *
-         * Once the target position is reached, the robot
-         * transitions into the SHOOT state.
-         */
-
-        if (driveToPosition(0.2)) {
-
-            robot.stopDrive();
-
-            currentState = AutoState.SHOOT;
-
-            stateStartTime =
-                    System.currentTimeMillis();
-        }
-    }
-
-    // =========================================================
-    // SHOOT
-    // =========================================================
-
-    private void SHOOT() {
-
-        /*
-         * Keep the shooter running for 6 seconds.
-         */
-        shootMotors();
-
-        /*
-         * If AprilTag 36 is visible, use the Limelight
-         * to correct the robot's horizontal alignment.
-         */
-        if (targetVisible) {
-
-            alignToAprilTag();
-        }
-
-        /*
-         * Six-second shooting period.
-         */
-        if (elapsedTime(6000)) {
-
-            stopShootMotors();
-
-            robot.stopDrive();
-
-            currentState = AutoState.WAIT_AFTER_SHOOT;
-
-            stateStartTime =
-                    System.currentTimeMillis();
-        }
-    }
-
-    // =========================================================
-    // WAIT AFTER SHOOT
-    // =========================================================
-
-    private void WAIT_AFTER_SHOOT() {
-
-        robot.stopDrive();
-
-        if (elapsedTime(1000)) {
-
-            prepareTurnLeft(90);
-
-            currentState = AutoState.TURN_LEFT_2;
-
-            stateStartTime =
-                    System.currentTimeMillis();
-        }
-    }
-
-    // =========================================================
-    // TURN LEFT 2
-    // =========================================================
-
-    private void TURN_LEFT_2() {
-
-        if (turnToHeading(0.2)) {
-
-            robot.stopDrive();
-
-            currentState = AutoState.WAIT_2;
-
-            stateStartTime =
-                    System.currentTimeMillis();
-        }
-    }
-
-    // =========================================================
-    // WAIT 2
-    // =========================================================
-
-    private void WAIT_2() {
-
-        robot.stopDrive();
-
-        if (elapsedTime(1000)) {
-
-            prepareDriveForward(250);
-
-            startIntake();
-
-            currentState = AutoState.INTAKE_DRIVE;
-
-            stateStartTime =
-                    System.currentTimeMillis();
-        }
-    }
-
-    // =========================================================
-    // INTAKE DRIVE
-    // =========================================================
-
-    private void INTAKE_DRIVE() {
-
-        startIntake();
-
-        if (driveToPosition(0.5)) {
-
-            stopIntake();
-
-            robot.stopDrive();
-
-            currentState = AutoState.STOP;
-
-            stateStartTime =
-                    System.currentTimeMillis();
-        }
-    }
-
-    // =========================================================
-    // STOP
-    // =========================================================
-
-    private void STOP() {
-
-        robot.stopAllMotors();
-
-        if (limelight != null) {
-            limelight.stop();
-        }
-
-        telemetry.addLine("AUTONOMOUS COMPLETE");
         telemetry.update();
     }
 
     // =========================================================
-    // LIMELIGHT UPDATE
+    // STAGE METHODS
     // =========================================================
 
-    private void updateLimelight() {
+    /*
+     * 60 INCHES FORWARD
+     */
+    private void DRIVE_FORWARD_1() {
 
-        targetVisible = false;
-
-        LLResult result =
-                limelight.getLatestResult();
-
-        if (result == null) {
-            return;
-        }
-
-        if (!result.isValid()) {
-            return;
-        }
-
-        List<LLResultTypes.FiducialResult> fiducials =
-                result.getFiducialResults();
-
-        for (LLResultTypes.FiducialResult fiducial : fiducials) {
-
-            int id =
-                    fiducial.getFiducialId();
-
-            /*
-             * Only use AprilTag ID 36.
-             */
-            if (id == TARGET_TAG_ID) {
-
-                targetVisible = true;
-
-                tagTx =
-                        fiducial.getTargetXDegrees();
-
-                tagTy =
-                        fiducial.getTargetYDegrees();
-
-                break;
-            }
-        }
-    }
-
-    // =========================================================
-    // APRILTAG ALIGNMENT
-    // =========================================================
-
-    private void alignToAprilTag() {
-
-        /*
-         * If the tag is already centered,
-         * don't move the robot.
-         */
-        if (Math.abs(tagTx) <= TX_TOLERANCE) {
+        if (driveDistance(
+                FORWARD_DISTANCE_1,
+                true
+        )) {
 
             robot.stopDrive();
 
-            return;
+            startX = robot.getOdoPositionX(
+                    DistanceUnit.INCH
+            );
+
+            startY = robot.getOdoPositionY(
+                    DistanceUnit.INCH
+            );
+
+            nextStage(
+                    AutoStage.TURN_LEFT_1
+            );
         }
+    }
 
-        /*
-         * Convert TX into a proportional correction.
-         *
-         * Positive TX:
-         * Tag is to the right.
-         *
-         * Negative TX:
-         * Tag is to the left.
-         */
+    /*
+     * TURN LEFT 90 DEGREES
+     */
+    private void TURN_LEFT_1() {
 
-        double correction =
-                tagTx * 0.025;
+        if (stageTimer.seconds() == 0) {
 
-        /*
-         * Limit maximum correction.
-         */
+            double currentHeading =
+                    robot.getOdoHeading(
+                            AngleUnit.DEGREES
+                    );
 
-        correction =
-                Math.max(
-                        -MAX_ALIGNMENT_POWER,
-                        Math.min(
-                                MAX_ALIGNMENT_POWER,
-                                correction
-                        )
-                );
-
-        /*
-         * Make sure very small corrections
-         * still move the robot.
-         */
-
-        if (Math.abs(correction)
-                < MIN_ALIGNMENT_POWER) {
-
-            correction =
-                    Math.copySign(
-                            MIN_ALIGNMENT_POWER,
-                            correction
+            turnTarget =
+                    normalizeAngle(
+                            currentHeading
+                                    + TURN_LEFT_ANGLE
                     );
         }
 
-        /*
-         * Strafe toward the AprilTag.
-         *
-         * Because your left motors are reversed
-         * in RobotHardware, these powers are
-         * intentionally written for your existing
-         * motor configuration.
-         */
-
-        if (tagTx > 0) {
-
-            // Tag is right -> strafe right
-
-            robot.setDrivePower(
-                    correction,
-                    -correction,
-                    -correction,
-                    correction
-            );
-
-        } else {
-
-            // Tag is left -> strafe left
-
-            robot.setDrivePower(
-                    -correction,
-                    correction,
-                    correction,
-                    -correction
-            );
-        }
-    }
-
-    // =========================================================
-    // PREPARE FORWARD MOVEMENT
-    // =========================================================
-
-    private void prepareDriveForward(double distanceMm) {
-
-        robot.updateOdo();
-
-        double startX =
-                robot.getOdoPositionX(
-                        DistanceUnit.MM
-                );
-
-        double startY =
-                robot.getOdoPositionY(
-                        DistanceUnit.MM
-                );
-
-        double heading =
-                robot.getOdoHeading(
-                        AngleUnit.RADIANS
-                );
-
-        targetX =
-                startX
-                        + distanceMm
-                        * Math.cos(heading);
-
-        targetY =
-                startY
-                        + distanceMm
-                        * Math.sin(heading);
-    }
-
-    // =========================================================
-    // PREPARE BACKWARD MOVEMENT
-    // =========================================================
-
-    private void prepareDriveBackward(double distanceMm) {
-
-        robot.updateOdo();
-
-        double startX =
-                robot.getOdoPositionX(
-                        DistanceUnit.MM
-                );
-
-        double startY =
-                robot.getOdoPositionY(
-                        DistanceUnit.MM
-                );
-
-        double heading =
-                robot.getOdoHeading(
-                        AngleUnit.RADIANS
-                );
-
-        targetX =
-                startX
-                        - distanceMm
-                        * Math.cos(heading);
-
-        targetY =
-                startY
-                        - distanceMm
-                        * Math.sin(heading);
-    }
-
-    // =========================================================
-    // DRIVE TO TARGET
-    // =========================================================
-
-    private boolean driveToPosition(double power) {
-
-        double currentX =
-                robot.getOdoPositionX(
-                        DistanceUnit.MM
-                );
-
-        double currentY =
-                robot.getOdoPositionY(
-                        DistanceUnit.MM
-                );
-
-        double remainingDistance =
-                Math.hypot(
-                        targetX - currentX,
-                        targetY - currentY
-                );
-
-        telemetry.addData(
-                "Target Distance",
-                "%.1f mm",
-                remainingDistance
-        );
-
-        /*
-         * Position reached.
-         */
-
-        if (remainingDistance <= 10) {
+        if (turnToHeading(turnTarget)) {
 
             robot.stopDrive();
 
-            return true;
+            startX = robot.getOdoPositionX(
+                    DistanceUnit.INCH
+            );
+
+            startY = robot.getOdoPositionY(
+                    DistanceUnit.INCH
+            );
+
+            nextStage(
+                    AutoStage.DRIVE_BACKWARD_1
+            );
         }
+    }
+
+    /*
+     * 36 INCHES BACKWARD
+     */
+    private void DRIVE_BACKWARD_1() {
+
+        if (driveDistance(
+                BACKWARD_DISTANCE_1,
+                false
+        )) {
+
+            robot.stopDrive();
+
+            nextStage(
+                    AutoStage.ALIGN_TO_HIVE
+            );
+        }
+    }
+
+    /*
+     * ALIGN TO HIVE USING LIMELIGHT
+     */
+    private void ALIGN_TO_HIVE() {
+
+        LLResult result =
+                robot.limelight.getLatestResult();
 
         /*
-         * Safety timeout.
+         * If no valid target is detected,
+         * wait until one appears.
          */
-
-        if (System.currentTimeMillis()
-                - stateStartTime > 10000) {
+        if (result == null || !result.isValid()) {
 
             robot.stopDrive();
 
             telemetry.addLine(
-                    "DRIVE TIMEOUT"
+                    "Waiting for hive target..."
             );
+
+            /*
+             * Safety timeout.
+             * If Limelight cannot see the target,
+             * continue instead of getting stuck forever.
+             */
+            if (stageTimer.seconds()
+                    >= LIMELIGHT_TIMEOUT) {
+
+                robot.stopDrive();
+
+                nextStage(
+                        AutoStage.SHOOT
+                );
+            }
+
+            return;
+        }
+
+        double tx = result.getTx();
+
+        telemetry.addData(
+                "Hive TX",
+                "%.2f",
+                tx
+        );
+
+        /*
+         * Target is centered.
+         */
+        if (Math.abs(tx)
+                <= LIMELIGHT_TX_TOLERANCE) {
+
+            robot.stopDrive();
+
+            nextStage(
+                    AutoStage.SHOOT
+            );
+
+            return;
+        }
+
+        /*
+         * Proportional rotation.
+         */
+        double turnPower =
+                tx * LIMELIGHT_KP;
+
+        turnPower =
+                clip(
+                        turnPower,
+                        -LIMELIGHT_MAX_POWER,
+                        LIMELIGHT_MAX_POWER
+                );
+
+        /*
+         * Prevent very small motor commands
+         * from being ineffective.
+         */
+        if (Math.abs(turnPower)
+                < MIN_TURN_POWER) {
+
+            turnPower =
+                    Math.copySign(
+                            MIN_TURN_POWER,
+                            turnPower
+                    );
+        }
+
+        robot.setDrivePower(
+                turnPower,
+                -turnPower,
+                turnPower,
+                -turnPower
+        );
+    }
+
+    /*
+     * SHOOT FOR 6 SECONDS
+     */
+    private void SHOOT() {
+
+        robot.stopDrive();
+
+        robot.shooter.setPower(
+                SHOOTER_POWER
+        );
+
+        runShootingSequence();
+
+        if (stageTimer.seconds()
+                >= SHOOT_TIME) {
+
+            robot.shooter.setPower(0);
+
+            setShooterServosIdle();
+
+            nextStage(
+                    AutoStage.TURN_RIGHT_1
+            );
+        }
+    }
+
+    /*
+     * TURN RIGHT 90 DEGREES
+     */
+    private void TURN_RIGHT_1() {
+
+        if (stageTimer.seconds() == 0) {
+
+            double currentHeading =
+                    robot.getOdoHeading(
+                            AngleUnit.DEGREES
+                    );
+
+            turnTarget =
+                    normalizeAngle(
+                            currentHeading
+                                    - TURN_RIGHT_ANGLE
+                    );
+        }
+
+        if (turnToHeading(turnTarget)) {
+
+            robot.stopDrive();
+
+            nextStage(
+                    AutoStage.START_INTAKE
+            );
+        }
+    }
+
+    /*
+     * START INTAKE
+     */
+    private void START_INTAKE() {
+
+        robot.intakeMotor.setPower(
+                INTAKE_POWER
+        );
+
+        nextStage(
+                AutoStage.DRIVE_BACKWARD_2
+        );
+    }
+
+    /*
+     * BACKWARD 60 INCHES
+     */
+    private void DRIVE_BACKWARD_2() {
+
+        /*
+         * Keep intake running while backing up.
+         */
+        robot.intakeMotor.setPower(
+                INTAKE_POWER
+        );
+
+        if (driveDistance(
+                BACKWARD_DISTANCE_2,
+                false
+        )) {
+
+            robot.stopDrive();
+
+            robot.intakeMotor.setPower(0);
+
+            nextStage(
+                    AutoStage.STOP
+            );
+        }
+    }
+
+    /*
+     * FINAL STOP
+     */
+    private void STOP() {
+
+        robot.stopAllMotors();
+
+        telemetry.addLine(
+                "AUTONOMOUS COMPLETE"
+        );
+    }
+
+    // =========================================================
+    // DRIVE DISTANCE USING ODOMETRY
+    // =========================================================
+
+    /*
+     * Uses the Pinpoint odometry position instead of
+     * timing the motors.
+     *
+     * forward = true:
+     *     robot travels forward
+     *
+     * forward = false:
+     *     robot travels backward
+     */
+    private boolean driveDistance(
+            double targetDistance,
+            boolean forward
+    ) {
+
+        double currentX =
+                robot.getOdoPositionX(
+                        DistanceUnit.INCH
+                );
+
+        double currentY =
+                robot.getOdoPositionY(
+                        DistanceUnit.INCH
+                );
+
+        double currentHeading =
+                robot.getOdoHeading(
+                        AngleUnit.RADIANS
+                );
+
+        double deltaX =
+                currentX - startX;
+
+        double deltaY =
+                currentY - startY;
+
+        /*
+         * Project odometry movement onto the robot's
+         * original forward direction.
+         */
+        double distanceTraveled =
+                deltaX * Math.cos(currentHeading)
+                        + deltaY * Math.sin(currentHeading);
+
+        /*
+         * If we're driving backward, reverse
+         * the measured displacement.
+         */
+        if (!forward) {
+
+            distanceTraveled =
+                    -distanceTraveled;
+        }
+
+        double error =
+                targetDistance
+                        - distanceTraveled;
+
+        telemetry.addData(
+                "Target Distance",
+                "%.2f",
+                targetDistance
+        );
+
+        telemetry.addData(
+                "Distance Traveled",
+                "%.2f",
+                distanceTraveled
+        );
+
+        telemetry.addData(
+                "Distance Error",
+                "%.2f",
+                error
+        );
+
+        /*
+         * Reached target.
+         */
+        if (Math.abs(error)
+                <= DRIVE_TOLERANCE) {
+
+            robot.stopDrive();
 
             return true;
         }
 
         /*
-         * Forward movement.
+         * Proportional speed control.
+         *
+         * Far away = faster
+         * Close = slower
          */
+        double power =
+                Math.abs(error)
+                        * 0.025;
+
+        power =
+                clip(
+                        power,
+                        MIN_DRIVE_POWER,
+                        MAX_DRIVE_POWER
+                );
+
+        /*
+         * Slow down very close to the target.
+         */
+        if (Math.abs(error) < 6.0) {
+
+            power =
+                    Math.min(
+                            power,
+                            0.25
+                    );
+        }
+
+        double direction =
+                forward ? 1.0 : -1.0;
 
         robot.setDrivePower(
-                power,
-                power,
-                power,
-                power
+                direction * power,
+                direction * power,
+                direction * power,
+                direction * power
         );
 
         return false;
     }
 
     // =========================================================
-    // PREPARE TURN LEFT
+    // TURN USING ODOMETRY HEADING
     // =========================================================
 
-    private void prepareTurnLeft(double degrees) {
-
-        robot.updateOdo();
-
-        double startHeading =
-                robot.getOdoHeading(
-                        AngleUnit.DEGREES
-                );
-
-        targetHeading =
-                normalizeDegrees(
-                        startHeading + degrees
-                );
-    }
-
-    // =========================================================
-    // TURN TO TARGET HEADING
-    // =========================================================
-
-    private boolean turnToHeading(double power) {
+    private boolean turnToHeading(
+            double targetHeading
+    ) {
 
         double currentHeading =
                 robot.getOdoHeading(
@@ -726,28 +832,28 @@ public class BasicAuto extends OpMode {
                 );
 
         telemetry.addData(
-                "Target Heading",
-                "%.1f°",
+                "Turn Target",
+                "%.2f",
                 targetHeading
         );
 
         telemetry.addData(
                 "Current Heading",
-                "%.1f°",
+                "%.2f",
                 currentHeading
         );
 
         telemetry.addData(
-                "Heading Error",
-                "%.1f°",
+                "Turn Error",
+                "%.2f",
                 error
         );
 
         /*
-         * Heading reached.
+         * Target reached.
          */
-
-        if (Math.abs(error) <= 2) {
+        if (Math.abs(error)
+                <= TURN_TOLERANCE) {
 
             robot.stopDrive();
 
@@ -755,151 +861,129 @@ public class BasicAuto extends OpMode {
         }
 
         /*
-         * Safety timeout.
+         * Proportional turn speed.
          */
+        double power =
+                Math.abs(error)
+                        * 0.012;
 
-        if (System.currentTimeMillis()
-                - stateStartTime > 5000) {
+        power =
+                clip(
+                        power,
+                        MIN_TURN_POWER,
+                        MAX_TURN_POWER
+                );
 
-            robot.stopDrive();
+        double direction =
+                Math.signum(error);
 
-            telemetry.addLine(
-                    "TURN TIMEOUT"
-            );
-
-            return true;
-        }
+        double turnPower =
+                direction * power;
 
         /*
-         * Turn left.
+         * Mecanum rotation:
+         *
+         * Left side  = one direction
+         * Right side = opposite direction
          */
-
-        if (error > 0) {
-
-            robot.setDrivePower(
-                    -power,
-                    power,
-                    -power,
-                    power
-            );
-
-        } else {
-
-            /*
-             * Turn right.
-             */
-
-            robot.setDrivePower(
-                    power,
-                    -power,
-                    power,
-                    -power
-            );
-        }
+        robot.setDrivePower(
+                turnPower,
+                -turnPower,
+                turnPower,
+                -turnPower
+        );
 
         return false;
     }
 
     // =========================================================
-    // SHOOTER
+    // SHOOTING SEQUENCE
     // =========================================================
 
-    private void shootMotors() {
+    private void runShootingSequence() {
 
-        robot.shooter.setPower(1.0);
-    }
+        /*
+         * Currently all four stages are activated
+         * throughout the shooting period.
+         *
+         * If your mechanism requires sequential
+         * movement, this can be changed.
+         */
 
-    private void stopShootMotors() {
+        robot.Stage1Servo.setPosition(
+                STAGE1_FIRE
+        );
 
-        robot.shooter.setPower(0.0);
-    }
+        robot.Stage2Servo.setPosition(
+                STAGE2_FIRE
+        );
 
-    // =========================================================
-    // INTAKE
-    // =========================================================
+        robot.Stage3Servo.setPosition(
+                STAGE3_FIRE
+        );
 
-    private void startIntake() {
-
-        robot.intakeMotor.setPower(1.0);
-    }
-
-    private void stopIntake() {
-
-        robot.intakeMotor.setPower(0.0);
-    }
-
-    // =========================================================
-    // TIMER
-    // =========================================================
-
-    private boolean elapsedTime(long milliseconds) {
-
-        return System.currentTimeMillis()
-                - stateStartTime
-                >= milliseconds;
+        robot.Stage4Servo.setPosition(
+                STAGE4_FIRE
+        );
     }
 
     // =========================================================
-    // TELEMETRY
+    // RESET SHOOTER SERVOS
     // =========================================================
 
-    private void updateTelemetry() {
+    private void setShooterServosIdle() {
 
-        telemetry.addData(
-                "State",
-                currentState
+        robot.Stage1Servo.setPosition(
+                STAGE1_IDLE
         );
 
-        telemetry.addData(
-                "X",
-                "%.2f mm",
-                robot.getOdoPositionX(
-                        DistanceUnit.MM
-                )
+        robot.Stage2Servo.setPosition(
+                STAGE2_IDLE
         );
 
-        telemetry.addData(
-                "Y",
-                "%.2f mm",
-                robot.getOdoPositionY(
-                        DistanceUnit.MM
-                )
+        robot.Stage3Servo.setPosition(
+                STAGE3_IDLE
         );
 
-        telemetry.addData(
-                "Heading",
-                "%.2f°",
-                robot.getOdoHeading(
-                        AngleUnit.DEGREES
-                )
+        robot.Stage4Servo.setPosition(
+                STAGE4_IDLE
         );
+    }
 
-        telemetry.addData(
-                "AprilTag Target",
-                TARGET_TAG_ID
-        );
+    // =========================================================
+    // CHANGE STAGE
+    // =========================================================
 
-        telemetry.addData(
-                "AprilTag Visible",
-                targetVisible
-        );
+    private void nextStage(
+            AutoStage nextStage
+    ) {
 
-        if (targetVisible) {
+        currentStage = nextStage;
 
-            telemetry.addData(
-                    "Tag TX",
-                    "%.2f°",
-                    tagTx
-            );
+        stageTimer.reset();
 
-            telemetry.addData(
-                    "Tag TY",
-                    "%.2f°",
-                    tagTy
-            );
+        robot.stopDrive();
+    }
+
+    // =========================================================
+    // ANGLE NORMALIZATION
+    // =========================================================
+
+    private double normalizeAngle(
+            double angle
+    ) {
+
+        while (angle > 180.0) {
+
+            angle -= 360.0;
         }
 
-        telemetry.update();
+        while (angle < -180.0) {
+
+            angle += 360.0;
+        }
+
+        return angle;
     }
 
     // =========================================================
@@ -911,40 +995,39 @@ public class BasicAuto extends OpMode {
             double current
     ) {
 
-        double difference =
-                target - current;
-
-        while (difference > 180) {
-
-            difference -= 360;
-        }
-
-        while (difference < -180) {
-
-            difference += 360;
-        }
-
-        return difference;
+        return normalizeAngle(
+                target - current
+        );
     }
 
     // =========================================================
-    // NORMALIZE ANGLE
+    // CLIP
     // =========================================================
 
-    private double normalizeDegrees(
-            double angle
+    private double clip(
+            double value,
+            double min,
+            double max
     ) {
 
-        while (angle >= 360) {
+        return Math.max(
+                min,
+                Math.min(
+                        max,
+                        value
+                )
+        );
+    }
 
-            angle -= 360;
-        }
+    // =========================================================
+    // STOP
+    // =========================================================
 
-        while (angle < 0) {
+    @Override
+    public void stop() {
 
-            angle += 360;
-        }
+        robot.stopAllMotors();
 
-        return angle;
+        robot.limelight.stop();
     }
 }
