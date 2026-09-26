@@ -182,5 +182,9 @@ public class RobotHardware {
 
     public void resetOdo() {
     }
+
+    public void stopDrive() {
+        setDrivePower(0, 0, 0, 0);
+    }
 }
 

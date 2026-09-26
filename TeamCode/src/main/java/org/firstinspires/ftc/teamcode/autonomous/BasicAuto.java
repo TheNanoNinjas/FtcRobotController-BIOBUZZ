@@ -1,254 +1,415 @@
 package org.firstinspires.ftc.teamcode.autonomous;
 
-import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
-import com.qualcomm.robotcore.hardware.DcMotor;
 
+import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
+
+import org.firstinspires.ftc.teamcode.Utilities.RobotHardware;
 
 @Autonomous(name = "BasicAuto", group = "Linear Opmode")
 public class BasicAuto extends LinearOpMode {
 
-    // Drive motors
-    private DcMotor fr_motor;
-    private DcMotor fl_motor;
-    private DcMotor br_motor;
-    private DcMotor bl_motor;
+    // =========================================================
+    // ROBOT HARDWARE
+    // =========================================================
 
-    // Mechanisms
-    private DcMotor shooter;
-    private DcMotor intake;
-    private DcMotor transferMotor;
+    private RobotHardware robot = new RobotHardware();
 
-    // Pinpoint Odometry
-    private GoBildaPinpointDriver pinpoint;
+    // =========================================================
+    // RUN OPMODE
+    // =========================================================
 
     @Override
     public void runOpMode() {
 
-        // =========================
-        // HARDWARE
-        // =========================
+        // Initialize ALL robot hardware
+        robot.init(hardwareMap);
 
-        fr_motor = hardwareMap.get(DcMotor.class, "fr_motor");
-        fl_motor = hardwareMap.get(DcMotor.class, "fl_motor");
-        br_motor = hardwareMap.get(DcMotor.class, "br_motor");
-        bl_motor = hardwareMap.get(DcMotor.class, "bl_motor");
+        // Show hardware status
+        robot.logHardwareStatus(telemetry);
 
-        shooter = hardwareMap.get(DcMotor.class, "shooter");
-        intake = hardwareMap.get(DcMotor.class, "intake");
-        transferMotor = hardwareMap.get(DcMotor.class, "transferMotor");
-
-        // Pinpoint
-        pinpoint = hardwareMap.get(
-                GoBildaPinpointDriver.class,
-                "pinpoint"
-        );
-
-        // =========================
-        // MOTOR DIRECTIONS
-        // =========================
-
-        fl_motor.setDirection(DcMotor.Direction.REVERSE);
-        bl_motor.setDirection(DcMotor.Direction.REVERSE);
-
-        // =========================
-        // PINPOINT SETUP
-        // =========================
-
-        pinpoint.setOffsets(0,0,DistanceUnit.MM);
-
-        pinpoint.setEncoderResolution(
-                GoBildaPinpointDriver.GoBildaOdometryPods.goBILDA_4_BAR_POD
-        );
-
-        pinpoint.setEncoderDirections(
-                GoBildaPinpointDriver.EncoderDirection.FORWARD,
-                GoBildaPinpointDriver.EncoderDirection.FORWARD
-        );
-
-        pinpoint.resetPosAndIMU();
-
-        // =========================
-        // INITIAL TELEMETRY
-        // =========================
-
+        telemetry.addLine("");
         telemetry.addLine("Pinpoint initialized.");
         telemetry.addLine("Waiting for start...");
         telemetry.update();
 
         waitForStart();
 
-        if (opModeIsActive()) {
-
-            // =========================
-            // AUTONOMOUS
-            // =========================
-
-            driveForward(0.5, 2500);
-
-            sleep(1000);
-
-            turnLeft(0.2, 1000);
-
-            driveBackward(0.2, 2500);
-
-            shootMotors();
-
-            sleep(2000);
-
-            stopShootMotors();
-
-            sleep(1000);
-
-            turnLeft(0.2, 1000);
-
-            sleep(1000);
-
-            startIntake();
-
-            driveForward(0.5, 1000);
-
-            stopIntake();
+        if (!opModeIsActive()) {
+            return;
         }
+
+        // =====================================================
+        // AUTONOMOUS
+        // =====================================================
+
+        driveForward(
+                500,
+                0.5
+        );
+
+        sleep(1000);
+
+        turnLeft(
+                90,
+                0.2
+        );
+
+        driveBackward(
+                500,
+                0.2
+        );
+
+        // Shoot
+        shootMotors();
+
+        sleep(2000);
+
+        stopShootMotors();
+
+        sleep(1000);
+
+        turnLeft(
+                90,
+                0.2
+        );
+
+        sleep(1000);
+
+        // Intake
+        startIntake();
+
+        driveForward(
+                250,
+                0.5
+        );
+
+        stopIntake();
+
+        robot.stopAllMotors();
     }
 
     // =========================================================
     // DRIVE FORWARD
     // =========================================================
 
-    private void driveForward(double power, long timeMs) {
+    private void driveForward(
+            double distanceMm,
+            double power
+    ) {
 
-        fr_motor.setPower(power);
-        fl_motor.setPower(power);
-        br_motor.setPower(power);
-        bl_motor.setPower(power);
+        robot.updateOdo();
 
-        long startTime = System.currentTimeMillis();
+        double startX =
+                robot.getOdoPositionX(DistanceUnit.MM);
 
-        while (opModeIsActive()
-                && System.currentTimeMillis() - startTime < timeMs) {
+        double startY =
+                robot.getOdoPositionY(DistanceUnit.MM);
 
-            updateOdometry();
+        double startHeading =
+                robot.getOdoHeading(AngleUnit.RADIANS);
+
+        double targetX =
+                startX +
+                        distanceMm * Math.cos(startHeading);
+
+        double targetY =
+                startY +
+                        distanceMm * Math.sin(startHeading);
+
+        robot.setDrivePower(
+                power,
+                power,
+                power,
+                power
+        );
+
+        long startTime =
+                System.currentTimeMillis();
+
+        while (opModeIsActive()) {
+
+            robot.updateOdo();
+
+            double currentX =
+                    robot.getOdoPositionX(
+                            DistanceUnit.MM
+                    );
+
+            double currentY =
+                    robot.getOdoPositionY(
+                            DistanceUnit.MM
+                    );
+
+            double remainingDistance =
+                    Math.hypot(
+                            targetX - currentX,
+                            targetY - currentY
+                    );
+
+            updateTelemetry();
+
+            telemetry.addData(
+                    "Target Distance",
+                    "%.1f mm",
+                    distanceMm
+            );
+
+            telemetry.addData(
+                    "Remaining",
+                    "%.1f mm",
+                    remainingDistance
+            );
 
             telemetry.update();
+
+            if (remainingDistance <= 10) {
+                break;
+            }
+
+            // Safety timeout
+            if (System.currentTimeMillis() - startTime > 10000) {
+                telemetry.addLine("DRIVE TIMEOUT");
+                telemetry.update();
+                break;
+            }
         }
 
-        stopMotors();
+        robot.stopDrive();
     }
 
     // =========================================================
     // DRIVE BACKWARD
     // =========================================================
 
-    private void driveBackward(double power, long timeMs) {
+    private void driveBackward(
+            double distanceMm,
+            double power
+    ) {
 
-        fr_motor.setPower(-power);
-        fl_motor.setPower(-power);
-        br_motor.setPower(-power);
-        bl_motor.setPower(-power);
+        robot.updateOdo();
 
-        long startTime = System.currentTimeMillis();
+        double startX =
+                robot.getOdoPositionX(DistanceUnit.MM);
 
-        while (opModeIsActive()
-                && System.currentTimeMillis() - startTime < timeMs) {
+        double startY =
+                robot.getOdoPositionY(DistanceUnit.MM);
 
-            updateOdometry();
+        double startHeading =
+                robot.getOdoHeading(AngleUnit.RADIANS);
+
+        double targetX =
+                startX -
+                        distanceMm * Math.cos(startHeading);
+
+        double targetY =
+                startY -
+                        distanceMm * Math.sin(startHeading);
+
+        robot.setDrivePower(
+                -power,
+                -power,
+                -power,
+                -power
+        );
+
+        long startTime =
+                System.currentTimeMillis();
+
+        while (opModeIsActive()) {
+
+            robot.updateOdo();
+
+            double currentX =
+                    robot.getOdoPositionX(
+                            DistanceUnit.MM
+                    );
+
+            double currentY =
+                    robot.getOdoPositionY(
+                            DistanceUnit.MM
+                    );
+
+            double remainingDistance =
+                    Math.hypot(
+                            targetX - currentX,
+                            targetY - currentY
+                    );
+
+            updateTelemetry();
+
+            telemetry.addData(
+                    "Target Distance",
+                    "%.1f mm",
+                    distanceMm
+            );
+
+            telemetry.addData(
+                    "Remaining",
+                    "%.1f mm",
+                    remainingDistance
+            );
 
             telemetry.update();
+
+            if (remainingDistance <= 10) {
+                break;
+            }
+
+            if (System.currentTimeMillis() - startTime > 10000) {
+                telemetry.addLine("DRIVE TIMEOUT");
+                telemetry.update();
+                break;
+            }
         }
 
-        stopMotors();
-    }
-
-    // =========================================================
-    // TURN RIGHT
-    // =========================================================
-
-    private void turnRight(double power, long timeMs) {
-
-        fr_motor.setPower(-power);
-        br_motor.setPower(-power);
-
-        fl_motor.setPower(power);
-        bl_motor.setPower(power);
-
-        long startTime = System.currentTimeMillis();
-
-        while (opModeIsActive()
-                && System.currentTimeMillis() - startTime < timeMs) {
-
-            updateOdometry();
-
-            telemetry.update();
-        }
-
-        stopMotors();
+        robot.stopDrive();
     }
 
     // =========================================================
     // TURN LEFT
     // =========================================================
 
-    private void turnLeft(double power, long timeMs) {
+    private void turnLeft(
+            double degrees,
+            double power
+    ) {
 
-        fr_motor.setPower(power);
-        br_motor.setPower(power);
+        double startHeading =
+                robot.getOdoHeading(
+                        AngleUnit.DEGREES
+                );
 
-        fl_motor.setPower(-power);
-        bl_motor.setPower(-power);
+        double targetHeading =
+                normalizeDegrees(
+                        startHeading + degrees
+                );
 
-        long startTime = System.currentTimeMillis();
+        robot.setDrivePower(
+                -power,
+                power,
+                -power,
+                power
+        );
 
-        while (opModeIsActive()
-                && System.currentTimeMillis() - startTime < timeMs) {
+        long startTime =
+                System.currentTimeMillis();
 
-            updateOdometry();
+        while (opModeIsActive()) {
+
+            double currentHeading =
+                    robot.getOdoHeading(
+                            AngleUnit.DEGREES
+                    );
+
+            double error =
+                    angleDifference(
+                            targetHeading,
+                            currentHeading
+                    );
+
+            updateTelemetry();
+
+            telemetry.addData(
+                    "Target Heading",
+                    "%.1f°",
+                    targetHeading
+            );
+
+            telemetry.addData(
+                    "Heading Error",
+                    "%.1f°",
+                    error
+            );
 
             telemetry.update();
+
+            if (Math.abs(error) <= 2) {
+                break;
+            }
+
+            if (System.currentTimeMillis() - startTime > 5000) {
+                telemetry.addLine("TURN TIMEOUT");
+                telemetry.update();
+                break;
+            }
         }
 
-        stopMotors();
+        robot.stopDrive();
     }
 
     // =========================================================
-    // UPDATE ODOMETRY
+    // TURN RIGHT
     // =========================================================
 
-    private void updateOdometry() {
+    private void turnRight(
+            double degrees,
+            double power
+    ) {
 
-        pinpoint.update();
+        double startHeading =
+                robot.getOdoHeading(
+                        AngleUnit.DEGREES
+                );
 
-        telemetry.addData(
-                "X",
-                "%.2f",
-                pinpoint.getPosX(DistanceUnit.MM)
+        double targetHeading =
+                normalizeDegrees(
+                        startHeading - degrees
+                );
+
+        robot.setDrivePower(
+                power,
+                -power,
+                power,
+                -power
         );
 
-        telemetry.addData(
-                "Y",
-                "%.2f",
-                pinpoint.getPosY(DistanceUnit.MM)
-        );
+        long startTime =
+                System.currentTimeMillis();
 
-        telemetry.addData(
-                "Heading",
-                "%.2f",
-                pinpoint.getHeading(DistanceUnit.MM)
-        );
-    }
+        while (opModeIsActive()) {
 
-    // =========================================================
-    // STOP DRIVE MOTORS
-    // =========================================================
+            double currentHeading =
+                    robot.getOdoHeading(
+                            AngleUnit.DEGREES
+                    );
 
-    private void stopMotors() {
+            double error =
+                    angleDifference(
+                            targetHeading,
+                            currentHeading
+                    );
 
-        fr_motor.setPower(0);
-        fl_motor.setPower(0);
-        br_motor.setPower(0);
-        bl_motor.setPower(0);
+            updateTelemetry();
+
+            telemetry.addData(
+                    "Target Heading",
+                    "%.1f°",
+                    targetHeading
+            );
+
+            telemetry.addData(
+                    "Heading Error",
+                    "%.1f°",
+                    error
+            );
+
+            telemetry.update();
+
+            if (Math.abs(error) <= 2) {
+                break;
+            }
+
+            if (System.currentTimeMillis() - startTime > 5000) {
+                telemetry.addLine("TURN TIMEOUT");
+                telemetry.update();
+                break;
+            }
+        }
+
+        robot.stopDrive();
     }
 
     // =========================================================
@@ -257,12 +418,12 @@ public class BasicAuto extends LinearOpMode {
 
     private void shootMotors() {
 
-        shooter.setPower(1.0);
+        robot.shooter.setPower(1.0);
     }
 
     private void stopShootMotors() {
 
-        shooter.setPower(0.0);
+        robot.shooter.setPower(0.0);
     }
 
     // =========================================================
@@ -271,13 +432,83 @@ public class BasicAuto extends LinearOpMode {
 
     private void startIntake() {
 
-        intake.setPower(1.0);
-        transferMotor.setPower(1.0);
+        robot.intakeMotor.setPower(1.0);
     }
 
     private void stopIntake() {
 
-        intake.setPower(0.0);
-        transferMotor.setPower(0.0);
+        robot.intakeMotor.setPower(0.0);
+    }
+
+    // =========================================================
+    // TELEMETRY
+    // =========================================================
+
+    private void updateTelemetry() {
+
+        telemetry.addData(
+                "X",
+                "%.2f mm",
+                robot.getOdoPositionX(
+                        DistanceUnit.MM
+                )
+        );
+
+        telemetry.addData(
+                "Y",
+                "%.2f mm",
+                robot.getOdoPositionY(
+                        DistanceUnit.MM
+                )
+        );
+
+        telemetry.addData(
+                "Heading",
+                "%.2f°",
+                robot.getOdoHeading(
+                        AngleUnit.DEGREES
+                )
+        );
+    }
+
+    // =========================================================
+    // ANGLE DIFFERENCE
+    // =========================================================
+
+    private double angleDifference(
+            double target,
+            double current
+    ) {
+
+        double difference = target - current;
+
+        while (difference > 180) {
+            difference -= 360;
+        }
+
+        while (difference < -180) {
+            difference += 360;
+        }
+
+        return difference;
+    }
+
+    // =========================================================
+    // NORMALIZE ANGLE
+    // =========================================================
+
+    private double normalizeDegrees(
+            double angle
+    ) {
+
+        while (angle >= 360) {
+            angle -= 360;
+        }
+
+        while (angle < 0) {
+            angle += 360;
+        }
+
+        return angle;
     }
 }
