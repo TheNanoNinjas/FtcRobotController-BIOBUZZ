@@ -570,4 +570,16 @@ public class RobotHardware {
                 "==================="
         );
     }
+
+
+public void startLimelight() {
+
+    limelight.pipelineSwitch(8);
+    limelight.start();
+}
+
+public void stopLimelight() {
+
+    limelight.stop();
+}
 }
